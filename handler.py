@@ -19,6 +19,7 @@ def app(event, context):
 
         logger.info('Load')
         load(conn, covid_df)
+        
         response = {
         "statusCode": 200,
        }

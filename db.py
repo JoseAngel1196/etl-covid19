@@ -23,6 +23,11 @@ def connect():
     logger.info('Connection succesful')
     return conn
 
+def create_table(conn):
+    """ Create records table if not exist """
+    cursor = conn.cursor()
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS {config('TABLE')} (date date PRIMARY KEY, cases integer, deaths integer, recovered integer)")
+
 def get_total_records(conn):
     """ Get the total records """
     cursor = conn.cursor()

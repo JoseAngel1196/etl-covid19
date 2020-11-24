@@ -6,7 +6,7 @@ import logging
 from decouple import config
 
 from utils import toDatetime
-from db import get_total_records, get_last_record, create_temporary_table, insert_records
+from db import get_total_records, get_last_record, create_temporary_table, insert_records, create_table
 
 logger = logging.getLogger()
 
@@ -32,6 +32,9 @@ def transform(data):
     return covid_df
 
 def load(conn, covid_df):
+    logger.info('Create table if not exist')
+    create_table(conn)
+    
     total_records = get_total_records(conn)
 
     if total_records[0] == 0:
