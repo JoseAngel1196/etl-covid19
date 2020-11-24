@@ -1,24 +1,30 @@
 import json
+import logging
 
+from etl import extract, transform, load
+from db import connect
+
+logger = logging.getLogger()
 
 def app(event, context):
-    body = {
-        "message": "Go Serverless v1.0! Your function executed successfully!",
-        "input": event
-    }
+    response = None
+    try:
+        logger.info('Extract')
+        data = extract()
 
-    response = {
+        logger.info('Transform')  
+        covid_df = transform(data)
+
+        conn = connect()
+
+        logger.info('Load')
+        load(conn, covid_df)
+        response = {
         "statusCode": 200,
-        "body": json.dumps(body)
-    }
-
+       }
+    except (Exception) as err:
+        logger.error(err)
+        response = {
+            "statusCode": 500,
+        }
     return response
-
-    # Use this code if you don't use the http event with the LAMBDA-PROXY
-    # integration
-    """
-    return {
-        "message": "Go Serverless v1.0! Your function executed successfully!",
-        "event": event
-    }
-    """
