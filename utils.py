@@ -1,4 +1,4 @@
 import pandas as pd
 
-def toDatetime(key, data):
+def to_datetime(key, data):
     return pd.to_datetime(data[key])

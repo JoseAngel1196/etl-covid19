@@ -1,15 +1,21 @@
+import os
 import psycopg2
 import logging
 
-from decouple import config
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-logger = logging.getLogger()
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(stream_handler)
 
 param_dic = {
-    "host": config('HOST'),
-    "database": config('DATABASE'),
-    "user": config('USER'),
-    "password": config('PASSWORD')
+    "host": os.environ['HOST'],
+    "database": os.environ['DATABASE'],
+    "user": os.environ['USER'],
+    "password": os.environ['PASSWORD']
 }
 
 def connect():
@@ -20,40 +26,35 @@ def connect():
         conn = psycopg2.connect(**param_dic)
     except (Exception, psycopg2.DatabaseError) as error:
         logger.error(error)
-    logger.info('Connection succesful')
+    logger.info('Connection succesfully')
     return conn
 
 def create_table(conn):
     """ Create records table if not exist """
     cursor = conn.cursor()
-    cursor.execute(f"CREATE TABLE IF NOT EXISTS {config('TABLE')} (date date PRIMARY KEY, cases integer, deaths integer, recovered integer)")
+    cursor.execute(f"CREATE TABLE IF NOT EXISTS {os.environ['TABLE']} (date date PRIMARY KEY, cases integer, deaths integer, recovered numeric)")
 
 def get_total_records(conn):
     """ Get the total records """
     cursor = conn.cursor()
-    cursor.execute(f"SELECT CASE WHEN EXISTS (SELECT * FROM public.{config('TABLE')} LIMIT 1) THEN 1 ELSE 0 END")
+    cursor.execute(f"SELECT CASE WHEN EXISTS (SELECT * FROM public.{os.environ['TABLE']} LIMIT 1) THEN 1 ELSE 0 END")
     return cursor.fetchone()
 
-def count_records(conn):
+def count_records(cursor):
     """ Count how many records are in the db """
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT * from public.{config('TABLE')}")
-    return cursor.fetchall()
+    cursor.execute(f"SELECT * from public.{os.environ['TABLE']}")
+    return cursor.rowcount
 
-def get_last_record(conn):
+def get_last_record(cursor):
     """ Get last record from records """
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT max(date) from public.{config('TABLE')}")
+    cursor.execute(f"SELECT max(date) from public.{os.environ['TABLE']}")
     return cursor.fetchone()
 
-def create_temporary_table(conn):
+def create_temporary_table(cursor):
     """ Create temporary table """
-    cursor = conn.cursor()
-    cursor.execute(f"CREATE TEMPORARY TABLE {config('TEMPORARY_TABLE')} as (SELECT * FROM {config('TABLE')} limit 0)")
+    cursor.execute(f"CREATE TEMPORARY TABLE {os.environ['TEMPORARY_TABLE']} as (SELECT * FROM {os.environ['TABLE']} limit 0)")
 
-def insert_records(conn):
+def insert_records(cursor):
     """ INSERT RECORDS FROM TEMPORARY TABLE TO RECORDS """
-    cursor = conn.cursor()
-    cursor.execute(f"INSERT INTO {config('TABLE')} (SELECT * FROM {config('TEMPORARY_TABLE')} 
-                    LEFT JOIN {config('TABLE')} USING (date) WHERE {config('TABLE')}.date IS NULL)")
-    cursor.execute(f"DROP TABLE {config('TEMPORARY_TABLE')}")
+    cursor.execute(f"INSERT INTO {os.environ['TABLE']} (SELECT * FROM {os.environ['TEMPORARY_TABLE']} LEFT JOIN {os.environ['TABLE']} USING (date) WHERE {os.environ['TABLE']}.date IS NULL)")
+    cursor.execute(f"DROP TABLE {os.environ['TEMPORARY_TABLE']}")

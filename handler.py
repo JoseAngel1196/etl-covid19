@@ -1,10 +1,18 @@
-import json
 import logging
 
 from etl import extract, transform, load
 from db import connect
 
-logger = logging.getLogger()
+import notify as n
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(stream_handler)
 
 def app(event, context):
     response = None
@@ -24,6 +32,8 @@ def app(event, context):
         "statusCode": 200,
        }
     except (Exception) as err:
+        n.notify("Error in the handler")
+        logger.error('Error in the handler')
         logger.error(err)
         response = {
             "statusCode": 500,

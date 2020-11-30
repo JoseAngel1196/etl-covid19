@@ -1,76 +1,111 @@
 import os
 import pandas as pd
-import psycopg2
 import logging
 
-from decouple import config
+from utils import to_datetime
+from db import get_total_records, get_last_record, create_temporary_table, insert_records, create_table, count_records
 
-from utils import toDatetime
-from db import get_total_records, get_last_record, create_temporary_table, insert_records, create_table
+import notify as n
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+logger.addHandler(stream_handler)
 
 def extract():
     return {
-        'nyc_times': pd.read_csv(config('NYC_TIMES_URL')),
-        'johns_hopkins': pd.read_csv(config('JOHNS_HOPKINS_URL'))
+        'nyc_times': pd.read_csv(os.environ['NYC_TIMES_URL']),
+        'johns_hopkins': pd.read_csv(os.environ['JOHNS_HOPKINS_URL'])
     }
 
 def transform(data):
-    nyc_times_df = data['nyc_times']
-    johns_hopkins_df = data['johns_hopkins']
+    covid_df = None
+    try:
+        logger.info('Starting transformation')
 
-    nyc_times_df['date'] = toDatetime('date', nyc_times_df)
-    johns_hopkins_df['Date'] = toDatetime('Date', johns_hopkins_df)
+        nyc_times_df = data['nyc_times']
+        johns_hopkins_df = data['johns_hopkins']
 
-    johns_hopkins_df = johns_hopkins_df[(johns_hopkins_df['Country/Region'] == 'US')]
-    johns_hopkins_df = johns_hopkins_df[['Date', 'Recovered']]
+        nyc_times_df['date'] = to_datetime('date', nyc_times_df)
+        johns_hopkins_df['Date'] = to_datetime('Date', johns_hopkins_df)
 
-    johns_hopkins_df.columns = [column.lower() for column in johns_hopkins_df.columns]
+        johns_hopkins_df = johns_hopkins_df[(johns_hopkins_df['Country/Region'] == 'US')]
+        johns_hopkins_df = johns_hopkins_df[['Date', 'Recovered']]
 
-    covid_df = pd.merge(nyc_times_df, johns_hopkins_df, on='date')
+        johns_hopkins_df.columns = [column.lower() for column in johns_hopkins_df.columns]
+
+        covid_df = pd.merge(nyc_times_df, johns_hopkins_df, on='date')
+    except (Exception) as err:
+        n.notify('Error in the transformation')
+        logger.error('Error in the transformation', err)
+    logger.info('Transformation completed')
     return covid_df
 
 def load(conn, covid_df):
-    logger.info('Create table if not exist')
-    create_table(conn)
-    
-    total_records = get_total_records(conn)
+    try:
+        logger.info('Create table if not exist')
+        create_table(conn)
 
-    if total_records[0] == 0:
-        bulk(conn, covid_df)
-    else:
-        insert(conn, covid_df)
-    cursor.close()
+        total_records = get_total_records(conn)
+        logger.info('Total records')
+        logger.info(total_records)
+
+        if total_records[0] == 0:
+            logger.info('Bulk')
+            bulk(conn, covid_df)
+        else:
+            logger.info('Insert')
+            insert(conn, covid_df)
+    except (Exception) as err:
+        n.notify('Error in the load process')
+        logger.error('Error in the load process', err)
+        cursor.close()
+    logger.info('Load succesfully')
 
 def bulk(conn, covid_df):
-    tmp_df = 'tmp/tmp_dataframe.csv'
-    covid_df.to_csv(tmp_df)
-    f = open(tmp_df, 'r')
-    cursor = conn.cursor()
+    tmp_df = '/tmp/tmp_dataframe.csv'
     try:
-        cursor.copy_from(f, table, sep=",")
-    except (Exception, psycopg2.DatabaseError) as error:
-        logger.error(error, exc_info=True)
-        os.remove(tmp_df)
+        logger.info(covid_df)
+        covid_df.to_csv(tmp_df, index=False, header=False)
+        f = open(tmp_df, 'r')
+        cursor = conn.cursor()
+        cursor.copy_from(f, os.environ['TABLE'], sep=",")
+    except (Exception) as error:
+        n.notify('Error in the bulk process')
+        logger.error('Error in the bulk process')
+        logger.error(error)
         conn.rollback()
-        cursor.close()
     conn.commit()
-    os.remove(tmp_df)
 
 def insert(conn, covid_df):
-    last_record = get_last_record(conn)
-    diff = max(covid_df['date']).date() - last_record[0]
+    cursor = conn.cursor()
+    last_record = get_last_record(cursor)
+    last_date_record = last_record[0]
+    last_date_df = max(covid_df['date']).date()
+    diff =  last_date_df - last_date_record
     if diff.days > 0:
         try:
-        create_temporary_table(conn)
-        tmp_csv = '/tmp/table_tmp.csv'
-        covid_df.to_csv(tmp_csv, index=False, header=False)
-        f = open(tmp_csv, 'r')
-        cursor.copy_from(f, config('TEMPORARY_TABLE'), sep=",")
-        insert_records(conn)
-        except:
-            logger.error(error, exc_info=True)
+            logger.info('Creating temporary table')
+            create_temporary_table(cursor)
+            tmp_csv = '/tmp/table_tmp.csv'
+            covid_df.to_csv(tmp_csv, index=False, header=False)
+            f = open(tmp_csv, 'r')
+            cursor.copy_from(f, os.environ['TEMPORARY_TABLE'], sep=",")
+            logger.info('Inserting records')
+            insert_records(cursor)
+            total_rows = count_records(cursor)
+            n.notify(f"Number of rows inserted to the database: {diff.days}")
+        except (Exception) as err:
+            logger.error('Error in the insert process')
+            logger.error(err)
+        else:
+            logger.info('Records inserted succesfully')
     else:
-        logging.info('Data is up to date')
+        n.notify('Your database is up to date')
+        logger.info('Data is up to date')
+    cursor.close()
 

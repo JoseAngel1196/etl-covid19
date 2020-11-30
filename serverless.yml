@@ -1,47 +1,67 @@
 service: etl-covid19
 
-# You can pin your service to only deploy with a specific Serverless version
-# Check out our docs for more details
 frameworkVersion: '2'
 
 provider:
   name: aws
-  runtime: python3.7
-
-# you can overwrite defaults here
+  runtime: python3.8
   stage: dev
   region: us-east-1
   profile: joseangel1196
+  memorySize: 512
+  timeout: 30
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - sns:publish
+      Resource:
+        - !Ref NotifySNS
+
+plugins:
+  - serverless-iam-roles-per-function
 
 layers:
-  ETL:
-    path: layers
-    name: ${self:service}
-    description: Event-Driven Python on AWS
+  etl:
+    path: etl-requirements
+    name: ${self:service}-layer
+    description: ETL Covid19 dependencies
     compatibleRuntimes:
-      - python3.6
-      - python3.7
       - python3.8
 
 functions:
   main:
     handler: handler.app
-
-#    Define function environment variables here
-   environment:
-     NYC_TIMES_URL: https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv
-     JOHNS_HOPKINS_URL: https://raw.githubusercontent.com/datasets/covid-19/master/data/time-series-19-covid-combined.csv
-     DATABASE: ${ssm:/database/covid19/database~true}
-     USER: ${ssm:/database/covid19/user~true}
-     PASSWORD: ${ssm:/database/covid19/password~true}
-     HOST: ${ssm:/database/covid19/endpoint~true}
-     TABLE: records
-     TEMPORARY_TABLE: tmp
+    name: ${self:provider.stage}-${self:service}
+    environment:
+      NYC_TIMES_URL: https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv
+      JOHNS_HOPKINS_URL: https://raw.githubusercontent.com/datasets/covid-19/master/data/time-series-19-covid-combined.csv
+      DATABASE: ${ssm:/database/covid19/database~true}
+      USER: ${ssm:/database/covid19/user~true}
+      PASSWORD: ${ssm:/database/covid19/password~true}
+      HOST: ${ssm:/database/covid19/endpoint~true}
+      TABLE: records
+      TEMPORARY_TABLE: tmp
+      SNS_TOPIC: !Ref NotifySNS
+    events:
+      - schedule:
+          name: ${self:service}
+          description: ETL Job
+          rate: cron(0 21 * * ? *)
+          enabled: true
+    layers:
+      - { Ref: EtlLambdaLayer }
+      - arn:aws:lambda:us-east-1:467048718390:layer:pandas:4
+      - arn:aws:lambda:us-east-1:467048718390:layer:numpy:6
 
 package:
   exclude:
     - terraform/**
+    - package.json
+    - package-lock.json
     - README.md
+    - etl-requirements/**
+    - node_modules/**
+    - venv/**
   individually: true
 
 resources:
