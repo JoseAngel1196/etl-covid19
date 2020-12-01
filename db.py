@@ -52,9 +52,9 @@ def get_last_record(cursor):
 
 def create_temporary_table(cursor):
     """ Create temporary table """
-    cursor.execute(f"CREATE TEMPORARY TABLE {os.environ['TEMPORARY_TABLE']} as (SELECT * FROM {os.environ['TABLE']} limit 0)")
+    cursor.execute(f"CREATE TEMPORARY TABLE {os.environ['TEMPORARY_TABLE']} as (SELECT * FROM public.{os.environ['TABLE']} limit 0)")
 
 def insert_records(cursor):
     """ INSERT RECORDS FROM TEMPORARY TABLE TO RECORDS """
-    cursor.execute(f"INSERT INTO {os.environ['TABLE']} (SELECT * FROM {os.environ['TEMPORARY_TABLE']} LEFT JOIN {os.environ['TABLE']} USING (date) WHERE {os.environ['TABLE']}.date IS NULL)")
+    cursor.execute(f"INSERT INTO public.{os.environ['TABLE']} SELECT {os.environ['TEMPORARY_TABLE']}.* FROM {os.environ['TEMPORARY_TABLE']} LEFT JOIN {os.environ['TABLE']} USING (date) WHERE {os.environ['TABLE']}.date IS NULL")
     cursor.execute(f"DROP TABLE {os.environ['TEMPORARY_TABLE']}")

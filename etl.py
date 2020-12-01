@@ -85,27 +85,28 @@ def insert(conn, covid_df):
     cursor = conn.cursor()
     last_record = get_last_record(cursor)
     last_date_record = last_record[0]
+    logger.info(last_date_record)
+    logger.info(pd.to_datetime(last_date_record))
     last_date_df = max(covid_df['date']).date()
     diff =  last_date_df - last_date_record
     if diff.days > 0:
         try:
-            logger.info('Creating temporary table')
-            create_temporary_table(cursor)
-            tmp_csv = '/tmp/table_tmp.csv'
-            covid_df.to_csv(tmp_csv, index=False, header=False)
-            f = open(tmp_csv, 'r')
-            cursor.copy_from(f, os.environ['TEMPORARY_TABLE'], sep=",")
-            logger.info('Inserting records')
-            insert_records(cursor)
-            total_rows = count_records(cursor)
+            tmp_df = '/tmp/tmp_dataframe.csv'
+            filtered_last_date = (covid_df['date'] > pd.to_datetime(last_date_record))
+            df_filtered = covid_df[filtered_last_date]
+            df_filtered.to_csv(tmp_df, index=False, header=False)
+            with open(tmp_df, 'r') as f:
+                cursor.copy_from(f, os.environ['TABLE'], sep=",")
             n.notify(f"Number of rows inserted to the database: {diff.days}")
         except (Exception) as err:
-            logger.error('Error in the insert process')
+            n.notify(f"Error in the insert process")
             logger.error(err)
+            exit(1)
         else:
             logger.info('Records inserted succesfully')
     else:
         n.notify('Your database is up to date')
         logger.info('Data is up to date')
+    conn.commit()
     cursor.close()
 
