@@ -33,7 +33,6 @@ def app(event, context):
        }
     except (Exception) as err:
         n.notify("Error in the handler")
-        logger.error('Error in the handler')
         logger.error(err)
         response = {
             "statusCode": 500,
