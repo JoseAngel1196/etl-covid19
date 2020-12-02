@@ -20,3 +20,4 @@ The following AWS Services are used for this project:
 1. SNS Topic
 
 ## Blog Link! :book:
+https://joseangel1196.hashnode.dev/cloudguruchallenge-event-driven-python-on-aws
